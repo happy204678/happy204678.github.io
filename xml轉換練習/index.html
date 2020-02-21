@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Title</title>
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+        <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+        <script src="https://unpkg.com/element-ui/lib/index.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/x2js/1.2.0/xml2json.min.js" integrity="sha256-RbFvov4fXA9DW/RzOAcIC0ZHIDmghGdsoug5slJHMMI=" crossorigin="anonymous"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.4.0/Chart.min.js"></script>
+    </head>
+    <body>
+        <div id="app">
+            <el-button @click="showDialog()">open</el-button>
+            <el-dialog title="操作頁面" :visible.sync="viewDialog" width="700px"  >
+                <div style="background-color: rgba(255, 192, 0, .5);; padding: 10px;">
+                    <canvas id="myChart"  width="400" height="100"></canvas>
+                    <div class="box-Group">
+                        <div style="margin-bottom: 5px;">
+                            <label class="el-button el-button--danger el-button--small">
+                                讀檔
+                                <input type="file" ref="upload" accept=".xml" @change="readXML" id="file_executor" style="display:none" class="outputlist_upload">
+                            </label>
+                        </div>
+                        <div style="margin-bottom: 5px;">
+                            <el-tag style="margin-right: 12px;">Series</el-tag>
+                            <el-button type="danger" size="small" @click="showAddDialog" :disabled="options.length === 0">新增移除</el-button>
+                            <el-button type="danger" size="small" @click="showMidifyDialog()" :disabled="options.length === 0">修改</el-button>
+                        </div>
+                        <div style="margin-bottom: 5px;">
+                            <el-tag style="margin-right: 20px;">X軸</el-tag>
+
+                            <el-input size="mini" v-model="xFrom" placeholder="0" style="width:50px" @change="refreshCanvas()"></el-input>
+                            ～
+                            <el-input size="mini" v-model="xEnd" style="width:50px" @change="refreshCanvas()"></el-input>
+                        </div>
+                    </div>
+                    <div class="box-Group" style="float: right;">
+                        <div style="border: 1px solid rgb(151, 151, 151); height: 109px; background-color: #ffffff;overflow: overlay;border-radius: 10px;">
+                            <ul>
+                                <el-checkbox-group v-model="checkList" @change="refreshCanvas">
+                                    <el-checkbox  v-for="(obj, index) in showObj" :key="index" :label="obj.label" style="display: block;"></el-checkbox>
+                                </el-checkbox-group>
+                            </ul>
+                        </div>
+                        <!-- <div style="text-align: right;">
+                            <el-button type="danger" size="small">匯出Excel</el-button>
+                        </div> -->
+                    </div>
+                </div>
+            </el-dialog>
+
+            <el-dialog title="新增移除" :visible.sync="viewAddDialog" width="300px">
+                <el-select v-model="addition" multiple size="mini" placeholder="選擇" class="dialog-item" style="width: 100%;">
+                    <el-option v-for="item in options"
+                                :key="item.id"
+                                :label="item.label"
+                                :value="item.id">
+                    </el-option>
+                </el-select>
+                <div style="text-align: right;">
+                    <el-button type="danger" size="small" @click="saveAdd()">確認</el-button>
+                </div>
+            </el-dialog>
+
+            <el-dialog title="修改" :visible.sync="viewModifyDialog" width="300px">
+                <el-select v-model="modify.select" size="mini" style="width: 100%;" placeholder="選擇" @change="handleModifyChange()" class="dialog-item">
+                    <el-option v-for="item in options"
+                                :key="item.id"
+                                :label="item.label"
+                                :value="item.id">
+                    </el-option> 
+                </el-select>
+                <el-input type="textarea" size="mini" v-model="modify.textarea" class="dialog-item" style="width: 100%;"></el-input>
+                <div style="text-align: right;">
+                    <el-button type="danger" size="small" @click="saveModify()">修改</el-button>
+                </div>
+            </el-dialog>
+        </div>
+    </body>
+    <script type="text/javascript">
+        var app = new Vue({
+            el: '#app',
+            data: {
+                
+                viewDialog: false,
+                jsonResult: { // 讀取後組成物件
+                    dataw: '',
+                    datar: '',
+                    dataC: ''
+                },
+                options: [], // 處理後物件陣列
+                datasets: [], // 圖型化物件前物件陣列
+                showObj: [], // 顯示加入欄位
+                checkList: [], // 勾選陣列
+                chart: '', // 儲存圖形
+                viewModifyDialog: false,
+                viewAddDialog: false,
+                viewDeleteDialog: false,
+                xFrom: '',
+                xEnd: '',
+                addition: [],
+                deleted: [],
+                modify: {
+                    select: null,
+                    textarea: ''
+                }
+            },
+            mounted () {
+            },
+            watch: {
+                'xFrom' (val) {
+                    this.xFrom = val.replace(/[^0-9]/, '')
+                },
+                'xEnd' (val) {
+                    this.xEnd = val.replace(/[^0-9]/, '')
+                },
+                'modify.textarea' (val) {
+                    this.modify.textarea = val.replace(/[^0-9]/, '')
+                }
+            },
+            methods: {
+                showDialog () {
+                    this.viewDialog = true
+                },
+                drawCanvas() {
+                    var ctx = document.getElementById('myChart')
+                    if(this.chart && this.chart !== null){
+                        this.chart.destroy() // 銷毀原本圖形
+                    }
+                    this.chart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: this.makeArray(this.xFrom, this.xEnd),
+                            datasets: this.makeInterval(this.datasets, this.xFrom, this.xEnd)
+                        }
+                    })
+                    console.log(this.datasets)
+                },
+                makeArray (start, end) {
+                    let arr = []
+                    for (let i = start; i <= end; i++) {
+                        arr.push(i)
+                    }
+                    return arr
+                },
+                // 重置data顯示區間
+                makeInterval (array, start, end) {
+                    let arr = []
+                    array.forEach((item) => {
+                        item.data = item.data.slice(Number(start), Number(end) + 1)
+                        arr.push(item)
+                    })
+                    return arr
+                },
+                // 字串轉陣列
+                makeData (str) {
+                    let arr = []
+                    for (let i = 0; i < str.length; i++) {
+                        arr.push(str.split('')[i])
+                    }
+                    return arr
+                },
+                showAddDialog() {
+                    this.viewAddDialog = true
+                },
+                saveAdd () {
+                    this.showObj = []
+                    this.options.forEach(element => {
+                        this.addition.forEach((add) => {
+                            if (add === element.id) {
+                                this.showObj.push({
+                                    label: element.label
+                                })
+                            }
+                        })  
+                    })
+                    this.viewAddDialog = false
+                },
+                // 刷新圖
+                refreshCanvas () {
+                    this.datasets = []
+                    this.checkList.forEach((checked) => {
+                        this.options.forEach(element => {
+                            if (checked === element.label) {
+                                this.datasets.push({
+                                    borderWidth: 1,
+                                    label: element.label,
+                                    data: this.makeData(element.value),
+                                    borderColor: this.getrandomColor()
+                                })
+                                return
+                            }
+                        })
+                    })
+                    this.drawCanvas()
+                },
+                showMidifyDialog () {
+                    this.modify = {
+                        select: null,
+                        textarea: ''
+                    }
+                    this.viewModifyDialog = true
+                },
+                showDeleteDialog () {
+                    this.deleted = []
+                    this.viewDeleteDialog = true
+                },
+                saveDelete () {
+                    this.deleted.forEach((item) => {
+                        this.showObj.forEach((obj, index) => {
+                            if (obj.label === item) {
+                                this.showObj.splice(index, 1)
+                            }
+                        })
+                    })
+                    this.viewDeleteDialog = false
+                    this.refreshCanvas()
+                },
+                handleModifyChange () {
+                    this.options.forEach((opt) => {
+                        if (this.modify.select === opt.id) {
+                            this.modify.textarea = opt.value
+                            return
+                        }
+                    })
+                },
+                saveModify () {
+                    this.options.forEach((opt) => {
+                        if (this.modify.select === opt.id) {
+                            opt.value = this.modify.textarea
+                            this.viewModifyDialog = false
+                            this.refreshCanvas()
+                            return
+                        }
+                    })
+                },
+                // 隨機顏色
+                getrandomColor () {
+                    let r = Math.floor(Math.random()*255);
+                    let g = Math.floor(Math.random()*255);
+                    let b = Math.floor(Math.random()*255);
+                    let color = 'rgb('+ r +','+ g +','+ b +')';
+                    return color
+                },
+                readXML () {
+                    this.showObj = []
+                    this.options = []
+                    this.jsonResult = {
+                        dataw: '',
+                        datar: '',
+                        dataC: ''
+                    }
+                    let that = this
+                    var files = $('#file_executor').prop('files')
+                    var reader = new FileReader();//新建一个FileReader
+                    console.log(files)
+                    reader.readAsText(files[0], "UTF-8");//读取文件
+                    reader.onload = (evt) => { //读取完文件之后会回来这里
+                        var fileString = evt.target.result; // 读取文件内容
+                        // console.log(evt)
+                        // console.log(fileString)
+                        var xmlDoc = null;
+                        if (window.DOMParser) {
+                            var parser = new DOMParser();
+                            xmlDoc = parser.parseFromString(fileString, "text/xml");
+                        } else {
+                        //IE
+                            xmlDoc = new ActiveXObject("Microsoft.XMLDOM");
+                            xmlDoc.async = "false";
+                            xmlDoc.loadXML(fileString);
+                        }
+                        this.jsonResult.dataw = xmlDoc.getElementsByTagName("dataw")[0].innerHTML
+                        this.jsonResult.datar = xmlDoc.getElementsByTagName("datar")[0].innerHTML
+                        this.jsonResult.dataC = xmlDoc.getElementsByTagName("dataC")[0].innerHTML
+                        
+                        Object.keys(this.jsonResult).forEach((element, index) => {
+                            this.options.push({id: index, label: element, value: this.jsonResult[element]})
+                        })
+                        // console.log(this.options)
+                    }
+                }
+            }
+        })
+        
+    </script>
+    <style type="text/css">
+        .chart {
+            background-color: #ffffff;
+            width:95%; 
+            height: 200px; 
+            border: 1px solid rgb(151, 151, 151); 
+            margin:0px auto 5px auto;
+        }
+        .box-Group {
+            display: inline-block;
+            width: 45%;
+            padding: 10px;
+            background: #ffe875;
+            box-shadow:inset 0.5px 0.5px 2px 1px rgba(20%,20%,40%,0.5);
+            border-radius: 10px
+        }
+        .dialog-item {
+            margin-bottom: 5px
+        }
+    </style>
+</html>

@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<!--最後的0不算,用來配合C#內Chart套件的series顯示數據-->
+<Timingdiagram>
+  <DATA>
+    <dataw>00001100000</dataw>
+    <datar>00000000000</datar>
+    <dataC>0000100000100</dataC>
+  </DATA>
+</Timingdiagram>
