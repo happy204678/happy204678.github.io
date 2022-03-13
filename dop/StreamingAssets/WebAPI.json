@@ -1,0 +1,6 @@
+{
+    "Save_Score": "/api/companyWeb/Game/Save_Score",
+    "Save_PlayerName":"/api/companyWeb/Game/Save_PlayerName",
+    "Get_Rank":"/api/companyWeb/Game/Get_Rank",
+    "Suggest": "/api/companyWeb/Game/Suggest"
+}
